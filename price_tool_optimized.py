@@ -697,9 +697,10 @@ class MainWindow(QMainWindow):
         layout.addLayout(bar)
 
         self.review_table = QTableWidget()
-        self.review_table.setColumnCount(8)
+        self.review_table.setColumnCount(9)
         self.review_table.setHorizontalHeaderLabels(
-            ["物料编码", "物料名称", "估算书单价", "价格库单价", "差异额", "差异%", "评审结果", "状态说明"]
+            ["物料编码", "估算书物料名称", "价格库物料名称", "估算书单价", "价格库单价",
+             "差异额", "差异%", "评审结果", "状态说明"]
         )
         self.review_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
         layout.addWidget(self.review_table)
@@ -816,7 +817,7 @@ class MainWindow(QMainWindow):
                 if matched_by_name:
                     desc = f"[名称匹配] {desc}"
                 results.append([
-                    db_code, db_name, round(est_price, 4), round(db_price, 4),
+                    db_code, name, db_name, round(est_price, 4), round(db_price, 4),
                     round(diff, 4) if diff is not None else "-",
                     f"{diff_percent:.2f}%" if diff_percent is not None else "-",
                     result, desc, color
@@ -825,9 +826,8 @@ class MainWindow(QMainWindow):
                 result, desc, color = self._classify_diff(None)
                 if not code and name:
                     desc = f"[名称未匹配] {desc}"
-                display_name = name if name else "未找到"
                 results.append([
-                    code, display_name, round(est_price, 4), "-",
+                    code, name, "未找到", round(est_price, 4), "-",
                     "-", "-", result, desc, color
                 ])
 
@@ -835,19 +835,20 @@ class MainWindow(QMainWindow):
 
         self.review_full_df = pd.DataFrame(
             results,
-            columns=["物料编码", "物料名称", "估算书单价", "价格库单价", "差异额", "差异%", "评审结果", "状态说明", "颜色"]
+            columns=["物料编码", "估算书物料名称", "价格库物料名称", "估算书单价", "价格库单价",
+                     "差异额", "差异%", "评审结果", "状态说明", "颜色"]
         )
         self.apply_review_filter()
 
         total_items = len(results)
         stats = {"合理": 0, "预警": 0, "不合理": 0, "库中无此物料": 0}
         for r in results:
-            stats[r[6]] += 1
+            stats[r[7]] += 1
 
         diff_sum = 0.0
         for r in results:
-            if isinstance(r[4], (int, float)):
-                diff_sum += abs(r[4])
+            if isinstance(r[5], (int, float)):
+                diff_sum += abs(r[5])
 
         self.review_stats.setText(
             f"📊 总计: {total_items} 项 | 🟢 合理: {stats['合理']} | 🟡 预警: {stats['预警']} | "
@@ -855,8 +856,8 @@ class MainWindow(QMainWindow):
             f"差异总额(绝对值): {diff_sum:.2f}"
         )
 
-        # 评审完成后自适应列宽：评审表格的"物料名称"列（索引1）设置为 Stretch
-        self.auto_resize_columns(self.review_table, name_col_index=1)
+        # 评审完成后自适应列宽：评审表格的"价格库物料名称"列（索引2）设置为 Stretch
+        self.auto_resize_columns(self.review_table, name_col_index=2)
 
     def apply_review_filter(self):
         if self.review_full_df is None or len(self.review_full_df) == 0:
@@ -875,8 +876,8 @@ class MainWindow(QMainWindow):
         """显示评审结果，每行整行应用对应底色"""
         self.review_table.setRowCount(len(df))
         for row_idx, (_, row) in enumerate(df.iterrows()):
-            color = row.iloc[8] if len(row) > 8 else "#ffffff"
-            for col_idx in range(8):
+            color = row.iloc[9] if len(row) > 9 else "#ffffff"
+            for col_idx in range(9):
                 val = row.iloc[col_idx]
                 item = QTableWidgetItem(str(val))
                 item.setBackground(QColor(color))
@@ -884,13 +885,13 @@ class MainWindow(QMainWindow):
 
         if len(df) == 0:
             self.review_table.setRowCount(1)
-            for col in range(8):
+            for col in range(9):
                 item = QTableWidgetItem("（无匹配记录）")
                 item.setBackground(QColor("#f0f0f0"))
                 self.review_table.setItem(0, col, item)
 
-        # 自适应列宽：评审表格的"物料名称"列（索引1）设置为 Stretch
-        self.auto_resize_columns(self.review_table, name_col_index=1)
+        # 自适应列宽：评审表格的"价格库物料名称"列（索引2）设置为 Stretch
+        self.auto_resize_columns(self.review_table, name_col_index=2)
 
     def export_review(self):
         if self.review_full_df is None or len(self.review_full_df) == 0:
@@ -902,13 +903,14 @@ class MainWindow(QMainWindow):
         if not file_path:
             return
         try:
-            df_export = self.review_full_df.iloc[:, :8].copy()
+            df_export = self.review_full_df.iloc[:, :9].copy()
 
             total_items = len(df_export)
             stats = df_export["评审结果"].value_counts().to_dict()
             summary_row = {
                 "物料编码": "汇总",
-                "物料名称": f"共{total_items}项",
+                "估算书物料名称": "",
+                "价格库物料名称": f"共{total_items}项",
                 "估算书单价": f"合理:{stats.get('合理',0)}",
                 "价格库单价": f"预警:{stats.get('预警',0)}",
                 "差异额": f"不合理:{stats.get('不合理',0)}",
